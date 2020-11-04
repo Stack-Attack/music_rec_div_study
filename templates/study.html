@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="../static/style.css">
+    <title>Title</title>
+</head>
+<body>
+    <div class="preview_container" id="loading">
+        <img src="../static/loading.svg" style="color: white; display:flex" id="loading_svg"/>
+    </div>
+    <div id="content" class="preview_container">
+        <div id="progress"></div>
+        <br/>
+        <div id="preview_container" class="preview_container"></div>
+    </div>
+</body>
+<script src="../static/study.js"></script>
+<script type="text/javascript">
+    rec_lists = {{ rec_lists|tojson|safe }};
+    username = {{ username|tojson|safe }}
+    init()
+</script>
+</html>

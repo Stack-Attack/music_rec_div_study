@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="../static/style.css">
+</head>
+<body>
+    <div class="full_page flex_center">
+        <form action="{{ url_for('generate_recs') }}" method="post" onsubmit="loading()" id="content">
+            <input type="text" required name="username" placeholder="Last.FM Username" class="text_input flex_center">
+        </form>
+        <img src="../static/loading.svg" style="color: white; display:none" id="loading"/>
+    </div>
+</body>
+<script type="text/javascript">// <![CDATA[
+        function loading(){
+            document.getElementById('loading').style.display = "flex";
+            document.getElementById('content').style.display = "none"
+        }
+// ]]></script>
+</html>

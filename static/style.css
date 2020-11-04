@@ -1,0 +1,192 @@
+body {
+    display: flex;
+    flex-direction: column;
+    font: normal 1em Verdana, Arial, sans-serif;
+}
+
+label {
+  float: left;
+  padding: 0 1em;
+  text-align: center;
+}
+
+.radio_check {
+    width:2em;
+    height:2em;
+}
+
+.likert_form {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-evenly;
+    margin-left: 10px;
+}
+
+.text_input {
+    display: flex;
+    width: 200px;
+    height:40px;
+    text-align: center;
+}
+
+.flex_center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.full_page {
+    display: flex;
+    width: 100%;
+    min-height: 85vh;
+}
+
+.preview_screen {
+    height: 81px;
+    width: 40%;
+    position: absolute;
+    z-index: 100;
+    transition-duration: 2000ms;
+}
+
+.preview {
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 80px;
+    position: absolute;
+    transition-duration: 2000ms;
+}
+
+.preview_container {
+    display: contents;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.song_preview {
+    width: 40%;
+    height: 80px;
+    allowtransparency: "true";
+    allow: "encrypted-media";
+    display: flex;
+    transition-duration: 2000ms;
+    border: none;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 51%;
+  height: 25px;
+  background: #d3d3d3;
+  outline: none;
+  opacity: 0.7;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+    display: none;
+}
+
+.slider:hover {
+  opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  background: #4CAF50;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 25px;
+  height: 25px;
+  background: #4CAF50;
+  cursor: pointer;
+}
+
+.container {
+  position: absolute;
+  top: 45%;
+  -webkit-transform: translateY(-50%);
+  -ms-transform: translateY(-50%);
+  transform: translateY(-50%);
+  width: 100%;
+  text-align: center;
+}
+
+/** Button Code **/
+
+.known_button {
+  width: 80px;
+  height: 68px;
+    text-decoration: none;
+  line-height: 25px;
+    padding-top: 12px;
+  display: block;
+    margin-right: 10px;
+  position: relative;
+  -moz-border-radius: 50%;
+  -webkit-border-radius: 50%;
+  border-radius: 50%;
+    backgroun-color: #7ec581;
+  border: 2px solid #444;
+  text-align: center;
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+  z-index: 10;
+  color: #333;
+}
+
+.known_button:hover {
+  color: #fff;
+    cursor: pointer;
+}
+
+.known_button:after {
+    position: absolute !important;
+  content: "";
+  width: 56px;
+  height: 56px;
+  display: block;
+  position: relative;
+  -moz-border-radius: 50%;
+  -webkit-border-radius: 50%;
+  border-radius: 50%;
+  right: 12px;
+  top: 12px;
+  background-color: #7ec581;
+  visibility: hidden;
+  filter: progid:DXImageTransform.Microsoft.Alpha(Opacity=0);
+  opacity: 0;
+  -moz-transition: all 0.4s ease;
+  -o-transition: all 0.4s ease;
+  -webkit-transition: all 0.4s ease;
+  transition: all 0.4s ease;
+  opacity: 1\9;
+  visibility: visible\9;
+  display: none\9;
+  -moz-transform: scale(0.8, 0.8);
+  -ms-transform: scale(0.8, 0.8);
+  -webkit-transform: scale(0.8, 0.8);
+  transform: scale(0.8, 0.8);
+  z-index: -1;
+  -moz-transition: all 0.2s ease;
+  -o-transition: all 0.2s ease;
+  -webkit-transition: all 0.2s ease;
+  transition: all 0.2s ease;
+}
+
+.known_button:hover:after {
+  visibility: visible;
+  filter: progid:DXImageTransform.Microsoft.Alpha(enabled=false);
+  opacity: 1;
+  display: block\9;
+  -moz-transform: scale(1.2, 1.2);
+  -ms-transform: scale(1.2, 1.2);
+  -webkit-transform: scale(1.2, 1.2);
+  transform: scale(1.2, 1.2);
+}
