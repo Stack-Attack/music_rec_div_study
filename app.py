@@ -6,18 +6,29 @@ import json
 from pymongo import MongoClient
 import pylast
 import torch
-import config
+from dotenv import load_dotenv
+from pathlib import Path
+import os
+
+load_dotenv()
 
 N = 1000
 
-ALS_MODEL_DIR = config.ALS_MODEL_DIR
-VAE_MODEL_DIR = config.VAE_MODEL_DIR
-VAE_MODEL_CONF = config.VAE_MODEL_CONF
+ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
+VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
 
-client = MongoClient(config.MONGO_CLIENT)
+VAE_MODEL_CONF = {
+    "enc_dims": [200],
+    "dropout": 0.5,
+    "anneal_cap": 1,
+    "total_anneal_steps": 10000,
+    "learning_rate": 1e-3
+}
+
+client = MongoClient(os.getenv("MONGO_CLIENT"))
 db = client.LFM_TRACKS
 
-network = pylast.LastFMNetwork(api_key=config.LFM_KEY, api_secret=config.LFM_SECRET)
+network = pylast.LastFMNetwork(api_key=os.getenv("LFM_KEY"), api_secret=os.getenv("LFM_SECRET"))
 
 
 def load_als_model(path):
