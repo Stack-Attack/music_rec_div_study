@@ -9,10 +9,15 @@ import torch
 from dotenv import load_dotenv
 from pathlib import Path
 import os
+import gdown
 
 load_dotenv()
 
 N = 1000
+
+if int(os.getenv("PRODUCTION")):
+    gdown.download(os.getenv("ALS_MODEL_REMOTE"), 'als_model.pkl')
+    #gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
 
 ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
 VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
