@@ -45,12 +45,11 @@ six==1.15.0
 spotipy==2.13.0
 tensorboard==2.3.0
 tensorboard-plugin-wit==1.7.0
-tensorflow-estimator==1.15.1
 termcolor==1.1.0
 threadpoolctl==2.1.0
-torch==1.7.0+cu101
+torch==1.7.0+cpu
 torchaudio==0.7.0
-torchvision==0.8.1+cu101
+torchvision==0.8.1+cpu
 tqdm==4.47.0
 typing-extensions==3.7.4.3
 urllib3==1.25.9
