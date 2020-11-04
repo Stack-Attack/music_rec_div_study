@@ -15,44 +15,10 @@ load_dotenv()
 
 N = 1000
 
-if int(os.getenv("PRODUCTION")):
-    gdown.download(os.getenv("ALS_MODEL_REMOTE"), 'als_model.pkl')
-    #gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
-
-ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
-VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
-
-VAE_MODEL_CONF = {
-    "enc_dims": [200],
-    "dropout": 0.5,
-    "anneal_cap": 1,
-    "total_anneal_steps": 10000,
-    "learning_rate": 1e-3
-}
-
 client = MongoClient(os.getenv("MONGO_CLIENT"))
 db = client.LFM_TRACKS
 
 network = pylast.LastFMNetwork(api_key=os.getenv("LFM_KEY"), api_secret=os.getenv("LFM_SECRET"))
-
-
-def load_als_model(path):
-    with open(path, 'rb') as file:
-        return pickle.load(file)
-
-
-def load_vae_model(path, conf):
-    checkpoint = torch.load(path)
-    vae_model = MultVAE(conf, CSRDataset(2817819), torch.device('cpu'))
-    vae_model.load_state_dict(checkpoint['model_state_dict'])
-    vae_model.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    vae_model.eval()
-
-    return vae_model
-
-
-als_model = load_als_model(ALS_MODEL_DIR)
-#vae_model = load_vae_model(VAE_MODEL_DIR, VAE_MODEL_CONF)
 
 app = Flask(__name__)
 
@@ -78,8 +44,37 @@ def generate_recs():
 
 
 if __name__ == '__main__':
-    app.config.update(
-        TEMPLATES_AUTO_RELOAD=True
-    )
+
+    if int(os.getenv("PRODUCTION")):
+        gdown.download(os.getenv("ALS_MODEL_REMOTE"), 'als_model.pkl')
+        # gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
+
+    ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
+    VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
+
+    VAE_MODEL_CONF = {
+        "enc_dims": [200],
+        "dropout": 0.5,
+        "anneal_cap": 1,
+        "total_anneal_steps": 10000,
+        "learning_rate": 1e-3
+    }
+
+    def load_als_model(path):
+        with open(path, 'rb') as file:
+            return pickle.load(file)
+
+    def load_vae_model(path, conf):
+        checkpoint = torch.load(path)
+        vae_model = MultVAE(conf, CSRDataset(2817819), torch.device('cpu'))
+        vae_model.load_state_dict(checkpoint['model_state_dict'])
+        vae_model.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        vae_model.eval()
+
+        return vae_model
+
+
+    als_model = load_als_model(ALS_MODEL_DIR)
+    # vae_model = load_vae_model(VAE_MODEL_DIR, VAE_MODEL_CONF)
 
     app.run()
