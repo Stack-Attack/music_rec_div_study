@@ -7,9 +7,11 @@ chardet==3.0.4
 click==7.1.2
 dataclasses==0.6
 dnspython==2.0.0
+filelock==3.0.12
 Flask==1.1.2
 future==0.18.2
 gast==0.2.2
+gdown==3.12.2
 google-auth==1.23.0
 google-auth-oauthlib==0.4.2
 google-pasta==0.2.0
@@ -36,6 +38,7 @@ pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pylast==4.0.0
 pymongo==3.11.0
+PySocks==1.7.1
 python-dotenv==0.15.0
 PyYAML==5.3.1
 requests==2.24.0
