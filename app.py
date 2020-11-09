@@ -28,10 +28,13 @@ app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET")
 
 if int(os.getenv("PRODUCTION")):
     gdown.download(os.getenv("ALS_MODEL_REMOTE"), 'als_model.pkl')
+    gdown.download(os.getenv("SONG_ENCODINGS_REMOTE"), 'song_encodings.pkl')
     # gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
+
 
 ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
 VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
+SONG_ENCODINGS_DIR = Path(os.getenv("SONG_ENCODINGS_DIR"))
 
 VAE_MODEL_CONF = {
     "enc_dims": [200],
@@ -57,9 +60,13 @@ def load_vae_model(path, conf):
     return vae_model
 
 
+def load_song_encodings(path):
+    with open(path, 'rb') as file:
+        return pickle.load(file)
+
+
 als_model = load_als_model(ALS_MODEL_DIR)
-
-
+song_encodings = load_song_encodings(SONG_ENCODINGS_DIR)
 # vae_model = load_vae_model(VAE_MODEL_DIR, VAE_MODEL_CONF)
 
 
@@ -70,7 +77,7 @@ def landing():
 
 def generate_recs(username):
     LEs = get_user_tracks(username, db, network, verbose=True, refresh=False)
-    LEs, _, _ = encode_user_tracks(LEs, db, verbose=True)
+    LEs, _, _ = encode_user_tracks(LEs, song_encodings, verbose=True)
     als_recs = process_rec_list(get_als_recs(LEs, als_model, n=N), db, verbose=True)
     vae_recs = process_rec_list(get_als_recs(LEs, als_model, n=N), db, verbose=True)
     rec_lists = [als_recs, vae_recs]

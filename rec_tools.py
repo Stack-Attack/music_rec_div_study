@@ -60,9 +60,9 @@ def get_user_tracks(username, db, network, refresh=False, time_from=1577836800, 
     return LEs
 
 
-def encode_user_tracks(LEs, db, verbose=False):
+def encode_user_tracks(LEs, encodings, verbose=False):
     user_vector = np.zeros(
-        db.tracks.count_documents({})
+        len(encodings)
         , dtype=np.int64)
 
     unknown = set()
@@ -70,10 +70,8 @@ def encode_user_tracks(LEs, db, verbose=False):
     known = set()
 
     for track in tqdm(LEs.values(), disable=not verbose):
-        result = db.tracks.find_one({'track': track})
-
-        if result:
-            user_vector[int(result['encoding'])] += 1
+        if tuple(track) in encodings:
+            user_vector[int(encodings[tuple(track)])] += 1
 
             if tuple(track) not in known:
                 known.add(tuple(track))
