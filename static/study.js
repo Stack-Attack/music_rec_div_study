@@ -123,7 +123,7 @@ async function init(){
     element.type = 'button'
     element.innerText = 'Continue'
     element.className = 'preview_screen'
-    element.style.top = (Y_START + (songs.length*Y_MARGINS)).toString().concat('px')
+    element.style.top = (Y_START + (NUM_RANKS*Y_MARGINS)).toString().concat('px')
     element.onclick = next_page
     element.id = 'next_page'
     document.getElementById('preview_container').appendChild(element)
@@ -131,13 +131,13 @@ async function init(){
     for (let i = 0; i<songs.length; i++){
         let container = document.getElementById('preview_container')
         if (i < NUM_RANKS + 1) {
-            let preview_object = get_preview_element(songs[i]['spotify'], (Y_START + (songs.length * Y_MARGINS)))
+            let preview_object = get_preview_element(songs[i]['spotify'], (Y_START + (NUM_RANKS * Y_MARGINS)))
             container.appendChild(preview_object.preview)
             songs[i]['element'] = preview_object
             await preview_object.promise
         }
         else{
-            let preview_object = get_preview_element(songs[i]['spotify'], (Y_START + (songs.length * Y_MARGINS)), load=false)
+            let preview_object = get_preview_element(songs[i]['spotify'], (Y_START + (NUM_RANKS * Y_MARGINS)), load=false)
             container.appendChild(preview_object.preview)
             songs[i]['element'] = preview_object
         }

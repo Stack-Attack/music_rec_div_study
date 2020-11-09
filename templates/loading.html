@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="../static/style.css">
+</head>
+<body>
+    <div class="full_page flex_center">
+        <img src="../static/loading.svg" style="color: white; display:flex" id="loading"/>
+        <div id="loading_status"></div>
+    </div>
+<script type="text/javascript">
+
+    function requestUpdate() {
+        let request = new XMLHttpRequest()
+        request.addEventListener('load', updateStatus)
+        request.open('GET', {{ url_for('check_recs')|tojson }})
+        request.send()
+    }
+
+    function updateStatus(){
+        let data = JSON.parse(this.responseText)
+
+        if (data.status === 'finished'){
+            window.location.replace({{ url_for('show_rec_lists')|tojson }})
+        }
+        else{
+            document.getElementById('loading_status').innerText = data.status
+            window.setTimeout(requestUpdate, 10000)
+        }
+    }
+
+    requestUpdate()
+</script>
+</body>
+
+</html>
