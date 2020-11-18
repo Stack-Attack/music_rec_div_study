@@ -86,9 +86,9 @@ def landing():
 
 
 def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
-    user_data = db.users.find_one({'id': username}, {'_id': 0, 'recs': 1})
+    user_data = db.users.find_one({'id': id}, {'recs': 1})
 
-    if refresh_recs or user_data is None:
+    if refresh_recs or 'recs' not in user_data:
         LEs = get_user_tracks(username, db, network, verbose=True, refresh=refresh_LEs)
         LEs, _, _ = encode_user_tracks(LEs, song_encodings, verbose=True)
         als_rec_idx, als_rec_rank = get_als_recs(LEs, als_model, n=N)
@@ -104,7 +104,7 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
         }
 
         db.users.update_one(
-            {'id': username},
+            {'id': id},
             {'$set': {'recs': rec_lists}},
             upsert=True
         )
@@ -118,7 +118,7 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
 @app.route('/request_recs', methods=['POST'])
 def request_recs():
     # Include authorization here
-    if db.users.find_one({'id': request.form['participant_id']}) is None:
+    if db.users.find_one({'id': request.form['participant_id']}, {'_id': 1}) is None:
         return render_template('verification.html')
 
     session['id'] = request.form['participant_id']
@@ -136,8 +136,8 @@ def request_recs():
     except ValueError:
         pass
 
-    existing_survey = db.users.find_one({'id': session['id']}, {'_id': 0, 'intro_survey': 1})
-    if existing_survey is not None:
+    user_data = db.users.find_one({'id': session['id']}, {'intro_survey': 1})
+    if 'intro_survey' in user_data:
         return render_template('loading.html')
 
     return render_template('intro_survey.html')
@@ -170,20 +170,21 @@ def check_recs():
 
 @app.route('/rec_lists/', methods=['GET', 'POST'])
 def show_rec_lists():
-    if request.method == 'POST':
-        db.users.update_one(
-            {'id': session['id']},
-            {'$set': {list(session['rec_lists'].keys())[session['list_count']]: request.form}},
-            upsert=True
-        )
-        session['list_count'] += 1
+    if session['list_count'] == 4:
+        return render_template('finished.html')
+
+    elif request.method == 'POST':
+        if int(request.form['list_count']) == session['list_count']:
+            db.users.update_one(
+                {'id': session['id']},
+                {'$set': {list(session['rec_lists'].keys())[session['list_count']]: request.form}},
+                upsert=True
+            )
+            session['list_count'] += 1
 
     elif request.method == 'GET':
         if 'list_count' not in session:
             session['list_count'] = 0
-
-    if session['list_count'] == 4:
-        return render_template('finished.html')
 
     return render_template('study.html',
                            rec_list=session['rec_lists'][list(session['rec_lists'].keys())[session['list_count']]],

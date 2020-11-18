@@ -13,6 +13,7 @@
         <div id="progress">List {{ list_count|tojson|safe }}/6</div>
         <br/>
         <form action="{{ url_for('show_rec_lists') }}" method="post" id='rec_form' class="preview_container">
+            <input type="text" value="{{ list_count|tojson|safe }}" name="list_count" style="display: none">
         </form>
     </div>
 
