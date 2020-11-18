@@ -7,7 +7,25 @@
 <body>
     <div class="full_page flex_center">
         <form action="{{ url_for('request_recs') }}" method="post" onsubmit="loading()" id="content">
-            <input type="text" required name="username" placeholder="Last.FM Username" class="text_input flex_center">
+            <div class="row_container">
+                <label for="participant_id" class="text_input flex_center">What is your Participant ID?</label>
+                <input type="text" required name="participant_id" placeholder="Participant ID" class="text_input flex_center">
+            </div>
+            <div class="row_container">
+                <label for="username" class="text_input flex_center">What is your Last.FM username?</label>
+                <input type="text" required name="username" placeholder="username" class="text_input flex_center">
+            </div>
+            <div class="row_container">
+                <label for="region" class="text_input flex_center">Which region are you currently in?</label>
+                <select type="text" required name="region" class="text_input flex_center">
+                    <option value="CA">Canada</option>
+                    <option value="NL">Netherlands</option>
+                    <option value="US">United States</option>
+                </select>
+            </div>
+            <div class="row_container">
+                <input type="submit" class="text_input flex_center">
+            </div>
         </form>
         <img src="../static/loading.svg" style="color: white; display:none" id="loading"/>
     </div>

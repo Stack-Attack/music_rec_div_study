@@ -41,12 +41,22 @@ label {
     min-height: 85vh;
 }
 
+.row_container {
+    width: 100%;
+    margin-top: 2em;
+    margin-bottom: 2em;
+    display: flex;
+    justify-content: center;
+}
+
 .preview_screen {
     height: 81px;
     width: 40%;
     position: absolute;
     z-index: 100;
     transition-duration: 2000ms;
+    margin-top: 50px;
+    margin-bottom: 50px;
 }
 
 .preview {
@@ -58,11 +68,23 @@ label {
     transition-duration: 2000ms;
 }
 
+.preview {
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 80px;
+    position: absolute;
+    transition-duration: 2000ms;
+    display: flex;
+    background: whitesmoke;
+}
+
 .preview_container {
     display: contents;
     justify-content: center;
     align-items: center;
     flex-wrap: wrap;
+    min-width: 940px;
 }
 
 .song_preview {
@@ -73,6 +95,21 @@ label {
     display: flex;
     transition-duration: 2000ms;
     border: none;
+    min-width: 286px;
+    margin-left: 12px;
+}
+
+.question_label {
+    width: 40%;
+    height: 80px;
+    align-items: center;
+    display: flex;
+    transition-duration: 2000ms;
+    min-width: 286px;
+    max-width: 400px;
+    margin-left: 12px;
+    text-align: center;
+    justify-content: center;
 }
 
 .slider {
