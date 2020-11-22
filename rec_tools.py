@@ -66,6 +66,7 @@ def get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=10, 
             div_rec_spotify_ids = [spotify_id]
         else:
             div_rec_idx.pop(-1)
+            div_rec_rank.pop(-1)
 
     # Continuously add the track maximally different from the list so far
     while len(div_rec_idx) <= n:
@@ -85,6 +86,7 @@ def get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=10, 
             div_rec_spotify_ids.append(spotify_id)
         else:
             div_rec_idx.pop(-1)
+            div_rec_rank.pop(-1)
 
     return div_rec_idx, div_rec_rank, div_rec_spotify_ids
 
@@ -148,6 +150,32 @@ def encode_user_tracks(LEs, encodings, verbose=False):
     return user_vector, known, unknown
 
 
+def get_genre_hash(LEs, id, db, refresh=False, verbose=False):
+    genre_data = db.users.find_one({'id': id}, {'genres': 1})
+
+    if 'genres' not in genre_data or refresh:
+        genre_dict = {}
+        for encoding in tqdm(LEs.nonzero()[0], disable=not verbose):
+            track_data = db.tracks.find_one({'encoding': int(encoding)}, {'spotify.genres': 1})
+            track_genres = track_data['spotify']['genres']
+            for genre in track_genres:
+                if genre in genre_dict:
+                    genre_dict[genre] += 1
+                else:
+                    genre_dict[genre] = 1
+
+        db.users.update_one(
+            {'id': id},
+            {'$set': {'genres': genre_dict}},
+            upsert=True
+        )
+
+    else:
+        genre_dict = genre_data['genres']
+
+    return genre_dict
+
+
 def get_als_recs(user_data, als_model, n=500):
     recs = als_model.recommend(
         0,
@@ -165,6 +193,26 @@ def get_vae_recs(user_data, vae_model, n=500):
     _, rec_idx = raw_recs.topk(n)
 
     return rec_idx[0].detach().numpy(), np.array(range(rec_idx.shape[1]))
+
+
+def get_filtered_recs(rec_idx, rec_rank, genre_dict, db, threshold=5, verbose=True):
+    filter_rec_idx, filter_rec_rank = [], []
+    for encoding, rank in zip(rec_idx, rec_rank):
+        track_data = db.tracks.find_one({'encoding': int(encoding)}, {'spotify.genres': 1})
+        track_genres = track_data['spotify']['genres']
+
+        for genre in track_genres:
+            if genre in genre_dict and genre_dict[genre] >= threshold:
+                filter_rec_idx.append(encoding)
+                filter_rec_rank.append(rank)
+                break
+
+    filter_count = len(rec_idx) - len(filter_rec_idx)
+
+    if verbose:
+        print(filter_count, ' tracks removed by filter.')
+
+    return filter_rec_idx, filter_rec_rank, filter_count
 
 
 def get_fresh_spotify_id(artist, song, spotify, region):
@@ -189,8 +237,6 @@ def process_rec_list(rec_idx, rec_rank, db, spotify, region, spotify_ids=False, 
             'track': result['track'][1],
             'rel': float(rec_rank[i]),
             'pop': result['popularity'],
-            'tags': [ tag['tag'] for tag in result['lfm_tags'] ],
-            'genres': result['spotify']['genres'],
             'spotify': get_fresh_spotify_id(result['track'][0], result['track'][1], spotify, region)
         }
 

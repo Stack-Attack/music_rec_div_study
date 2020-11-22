@@ -10,16 +10,18 @@
         <img src="../static/loading.svg" style="color: white; display:flex" id="loading_svg"/>
     </div>
     <div id="content" class="preview_container">
-        <div id="progress">List {{ list_count|tojson|safe }}/6</div>
+        <div id="progress">List {{ list_count|tojson|safe }}/5</div>
         <br/>
         <form action="{{ url_for('show_rec_lists') }}" method="post" id='rec_form' class="preview_container">
             <input type="text" value="{{ list_count|tojson|safe }}" name="list_count" style="display: none">
+            <input type="text" value="{{ list_key|tojson|safe }}" name="list_key" style="display: none">
         </form>
     </div>
 
 <script src="../static/study.js"></script>
 <script type="text/javascript">;
     list_count = {{ list_count|tojson|safe }}
+    list_key = {{ list_key|tojson|safe }}
     rec_list = {{ rec_list|tojson|safe }}
     init(rec_list)
 </script>

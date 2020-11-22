@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, session, jsonify
 from flask_executor import Executor
 import pickle
 from MultVAE import MultVAE, CSRDataset
-from rec_tools import get_user_tracks, encode_user_tracks, get_als_recs, get_vae_recs, get_vector_div, process_rec_list, get_div_recs
+from rec_tools import get_user_tracks, encode_user_tracks, get_als_recs, get_vae_recs, get_vector_div, process_rec_list, get_div_recs, get_genre_hash, get_filtered_recs
 import json
 from pymongo import MongoClient
 import pylast
@@ -54,7 +54,6 @@ VAE_MODEL_CONF = {
     "learning_rate": 1e-3
 }
 
-
 def load_als_model(path):
     with open(path, 'rb') as file:
         return pickle.load(file)
@@ -80,6 +79,7 @@ song_encodings = load_song_encodings(SONG_ENCODINGS_DIR)
 
 print('Done loading models into ram.')
 
+
 @app.route('/')
 def landing():
     return render_template('verification.html')
@@ -88,24 +88,35 @@ def landing():
 def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
     user_data = db.users.find_one({'id': id}, {'recs': 1})
 
+    rec_lists = {}
     if refresh_recs or 'recs' not in user_data:
         LEs = get_user_tracks(username, db, network, verbose=True, refresh=refresh_LEs)
         LEs, _, _ = encode_user_tracks(LEs, song_encodings, verbose=True)
-        als_rec_idx, als_rec_rank = get_als_recs(LEs, als_model, n=N)
-        vae_rec_idx, vae_rec_rank = get_als_recs(LEs, als_model, n=N)
-        als_max_div_idx, als_max_div_rel, als_max_div_spot = get_div_recs(als_rec_idx, als_rec_rank, als_model.item_factors, spotify, db, region, n=10)
-        vae_max_div_idx, vae_max_div_rel, vae_max_div_spot = get_div_recs(vae_rec_idx, vae_rec_rank, als_model.item_factors, spotify, db, region, n=10)
+        genre_dict = get_genre_hash(LEs, id, db, verbose=True)
 
-        rec_lists = {
-            'als': process_rec_list(als_rec_idx, als_rec_rank, db, spotify, region, verbose=True),
-            'als_max_div': process_rec_list(als_max_div_idx, als_max_div_rel, db, spotify, region, spotify_ids=als_max_div_spot, verbose=True),
-            'vae': process_rec_list(vae_rec_idx, vae_rec_rank, db, spotify, region, verbose=True),
-            'vae_max_div': process_rec_list(vae_max_div_idx, vae_max_div_rel, db, spotify, region, spotify_ids=vae_max_div_spot, verbose=True)
-        }
+        als_rec_idx, als_rec_rank = get_als_recs(LEs, als_model, n=N)
+        rec_lists['als'] = process_rec_list(als_rec_idx, als_rec_rank, db, spotify, region, verbose=True)
+
+        als_max_div_idx, als_max_div_rank, als_max_div_spot = get_div_recs(als_rec_idx, als_rec_rank, als_model.item_factors, spotify, db, region, n=10)
+        rec_lists['als_max_div'] = process_rec_list(als_max_div_idx, als_max_div_rank, db, spotify, region, spotify_ids=als_max_div_spot, verbose=True)
+
+        als_filt_idx, als_filt_rank, als_filter_count = get_filtered_recs(als_rec_idx, als_rec_rank, genre_dict, db)
+        als_filt_div_idx, als_filt_div_rank, als_filt_div_spot = get_div_recs(als_filt_idx, als_filt_rank, als_model.item_factors, spotify, db, region, n=10)
+        rec_lists['als_filt_div'] = process_rec_list(als_filt_div_idx, als_filt_div_rank, db, spotify, region, spotify_ids=als_filt_div_spot, verbose=True)
+
+        vae_rec_idx, vae_rec_rank = get_als_recs(LEs, als_model, n=N)
+        rec_lists['vae'] = process_rec_list(vae_rec_idx, vae_rec_rank, db, spotify, region, verbose=True)
+
+        vae_max_div_idx, vae_max_div_rank, vae_max_div_spot = get_div_recs(vae_rec_idx, vae_rec_rank, als_model.item_factors, spotify, db, region, n=10)
+        rec_lists['vae_max_div'] = process_rec_list(vae_max_div_idx, vae_max_div_rank, db, spotify, region, spotify_ids=vae_max_div_spot, verbose=True)
+
+        vae_filt_idx, vae_filt_rank, vae_filter_count = get_filtered_recs(vae_rec_idx, vae_rec_rank, genre_dict, db)
+        vae_filt_div_idx, vae_filt_div_rank, vae_filt_div_spot = get_div_recs(vae_filt_idx, vae_filt_rank, als_model.item_factors, spotify, db, region, n=10)
+        rec_lists['vae_filt_div'] = process_rec_list(vae_filt_div_idx, vae_filt_div_rank, db, spotify, region, spotify_ids=vae_filt_div_spot, verbose=True)
 
         db.users.update_one(
             {'id': id},
-            {'$set': {'recs': rec_lists}},
+            {'$set': {'recs': rec_lists, 'als_filter_count': als_filter_count, 'vae_filter_count': vae_filter_count}},
             upsert=True
         )
 
@@ -129,7 +140,7 @@ def request_recs():
             session['id'],
             generate_recs, session['id'],
             request.form['username'],
-            refresh_recs=False,
+            refresh_recs=True,
             refresh_LEs=False,
             region=session['region']
         )
@@ -170,14 +181,39 @@ def check_recs():
 
 @app.route('/rec_lists/', methods=['GET', 'POST'])
 def show_rec_lists():
-    if session['list_count'] == 4:
+    if 'sequence' not in session:
+        cursor = db.latin.find()
+        min_count = float(9999999)
+        for doc in cursor:
+            if doc['count'] <= min_count:
+                min_count = doc['count']
+                session['group'] = doc['group']
+                session['sequence'] = doc['sequence']
+
+        db.users.update_one(
+            {'id': session['id']},
+            {'$set': {
+                'group': session['group'],
+                'sequence': session['sequence']
+            }},
+            upsert=True
+        )
+
+        db.latin.update_one(
+            {'group': session['group']},
+            {'$inc': {
+                'count': 1
+            }}
+        )
+
+    if 'list_count' in session and session['list_count'] == 4:
         return render_template('finished.html')
 
     elif request.method == 'POST':
         if int(request.form['list_count']) == session['list_count']:
             db.users.update_one(
                 {'id': session['id']},
-                {'$set': {list(session['rec_lists'].keys())[session['list_count']]: request.form}},
+                {'$set': {request.form['list_key']+'_survey': request.form}},
                 upsert=True
             )
             session['list_count'] += 1
@@ -187,8 +223,10 @@ def show_rec_lists():
             session['list_count'] = 0
 
     return render_template('study.html',
-                           rec_list=session['rec_lists'][list(session['rec_lists'].keys())[session['list_count']]],
-                           list_count=session['list_count'])
+                           rec_list=session['rec_lists'][list(session['rec_lists'].keys())[session['sequence'][session['list_count']]]],
+                           list_count=session['list_count'],
+                           list_key=list(session['rec_lists'].keys())[session['sequence'][session['list_count']]]
+                           )
 
 
 if __name__ == '__main__':
