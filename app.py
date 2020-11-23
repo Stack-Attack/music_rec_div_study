@@ -3,8 +3,7 @@ from flask_executor import Executor
 import pickle
 from MultVAE import MultVAE, CSRDataset
 from rec_tools import get_user_tracks, encode_user_tracks, get_als_recs, get_vae_recs, get_vector_div, process_rec_list, get_div_recs, get_genre_hash, get_filtered_recs
-import json
-from pymongo import MongoClient
+from flask_pymongo import PyMongo
 import pylast
 import torch
 from dotenv import load_dotenv
@@ -18,8 +17,12 @@ load_dotenv()
 
 N = 1000
 
-client = MongoClient(os.getenv("MONGO_CLIENT"))
-db = client.LFM_TRACKS
+app = Flask(__name__)
+executor = Executor(app)
+app.config['EXECUTOR_MAX_WORKERS'] = None
+app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET")
+app.config['MONGO_URI'] = os.getenv("MONGO_CLIENT")
+mongo = PyMongo(app)
 
 network = pylast.LastFMNetwork(api_key=os.getenv("LFM_KEY"), api_secret=os.getenv("LFM_SECRET"))
 
@@ -31,16 +34,10 @@ spotify = spotipy.Spotify(
     requests_timeout=20
 )
 
-app = Flask(__name__)
-executor = Executor(app)
-app.config['EXECUTOR_MAX_WORKERS'] = None
-app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET")
-
 if int(os.getenv("PRODUCTION")):
     gdown.download(os.getenv("ALS_MODEL_REMOTE"), 'als_model.pkl')
     gdown.download(os.getenv("SONG_ENCODINGS_REMOTE"), 'song_encodings.pkl')
     # gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
-
 
 ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
 VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
@@ -86,35 +83,35 @@ def landing():
 
 
 def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
-    user_data = db.users.find_one({'id': id}, {'recs': 1})
+    user_data = mongo.db.users.find_one({'id': id}, {'recs': 1})
 
     rec_lists = {}
     if refresh_recs or 'recs' not in user_data:
-        LEs = get_user_tracks(username, db, network, verbose=True, refresh=refresh_LEs)
+        LEs = get_user_tracks(username, mongo.db, network, verbose=True, refresh=refresh_LEs)
         LEs, _, _ = encode_user_tracks(LEs, song_encodings, verbose=True)
-        genre_dict = get_genre_hash(LEs, id, db, verbose=True)
+        genre_dict = get_genre_hash(LEs, id, mongo.db, verbose=True)
 
         als_rec_idx, als_rec_rank = get_als_recs(LEs, als_model, n=N)
-        rec_lists['als'] = process_rec_list(als_rec_idx, als_rec_rank, db, spotify, region, verbose=True)
+        rec_lists['als'] = process_rec_list(als_rec_idx, als_rec_rank, mongo.db, spotify, region, verbose=True)
 
-        als_max_div_idx, als_max_div_rank, als_max_div_spot = get_div_recs(als_rec_idx, als_rec_rank, als_model.item_factors, spotify, db, region, n=10)
-        rec_lists['als_max_div'] = process_rec_list(als_max_div_idx, als_max_div_rank, db, spotify, region, spotify_ids=als_max_div_spot, verbose=True)
+        als_max_div_idx, als_max_div_rank, als_max_div_spot = get_div_recs(als_rec_idx, als_rec_rank, als_model.item_factors, spotify, mongo.db, region, n=10)
+        rec_lists['als_max_div'] = process_rec_list(als_max_div_idx, als_max_div_rank, mongo.db, spotify, region, spotify_ids=als_max_div_spot, verbose=True)
 
-        als_filt_idx, als_filt_rank, als_filter = get_filtered_recs(als_rec_idx, als_rec_rank, genre_dict, db, als_model.item_factors, spotify, region)
-        als_filt_div_idx, als_filt_div_rank, als_filt_div_spot = get_div_recs(als_filt_idx, als_filt_rank, als_model.item_factors, spotify, db, region, n=10)
-        rec_lists['als_filt_div'] = process_rec_list(als_filt_div_idx, als_filt_div_rank, db, spotify, region, spotify_ids=als_filt_div_spot, verbose=True)
+        als_filt_idx, als_filt_rank, als_filter = get_filtered_recs(als_rec_idx, als_rec_rank, genre_dict, mongo.db, als_model.item_factors, spotify, region)
+        als_filt_div_idx, als_filt_div_rank, als_filt_div_spot = get_div_recs(als_filt_idx, als_filt_rank, als_model.item_factors, spotify, mongo.db, region, n=10)
+        rec_lists['als_filt_div'] = process_rec_list(als_filt_div_idx, als_filt_div_rank, mongo.db, spotify, region, spotify_ids=als_filt_div_spot, verbose=True)
 
         vae_rec_idx, vae_rec_rank = get_als_recs(LEs, als_model, n=N)
-        rec_lists['vae'] = process_rec_list(vae_rec_idx, vae_rec_rank, db, spotify, region, verbose=True)
+        rec_lists['vae'] = process_rec_list(vae_rec_idx, vae_rec_rank, mongo.db, spotify, region, verbose=True)
 
-        vae_max_div_idx, vae_max_div_rank, vae_max_div_spot = get_div_recs(vae_rec_idx, vae_rec_rank, als_model.item_factors, spotify, db, region, n=10)
-        rec_lists['vae_max_div'] = process_rec_list(vae_max_div_idx, vae_max_div_rank, db, spotify, region, spotify_ids=vae_max_div_spot, verbose=True)
+        vae_max_div_idx, vae_max_div_rank, vae_max_div_spot = get_div_recs(vae_rec_idx, vae_rec_rank, als_model.item_factors, spotify, mongo.db, region, n=10)
+        rec_lists['vae_max_div'] = process_rec_list(vae_max_div_idx, vae_max_div_rank, mongo.db, spotify, region, spotify_ids=vae_max_div_spot, verbose=True)
 
-        vae_filt_idx, vae_filt_rank, vae_filter = get_filtered_recs(vae_rec_idx, vae_rec_rank, genre_dict, db, als_model.item_factors, spotify, region)
-        vae_filt_div_idx, vae_filt_div_rank, vae_filt_div_spot = get_div_recs(vae_filt_idx, vae_filt_rank, als_model.item_factors, spotify, db, region, n=10)
-        rec_lists['vae_filt_div'] = process_rec_list(vae_filt_div_idx, vae_filt_div_rank, db, spotify, region, spotify_ids=vae_filt_div_spot, verbose=True)
+        vae_filt_idx, vae_filt_rank, vae_filter = get_filtered_recs(vae_rec_idx, vae_rec_rank, genre_dict, mongo.db, als_model.item_factors, spotify, region)
+        vae_filt_div_idx, vae_filt_div_rank, vae_filt_div_spot = get_div_recs(vae_filt_idx, vae_filt_rank, als_model.item_factors, spotify, mongo.db, region, n=10)
+        rec_lists['vae_filt_div'] = process_rec_list(vae_filt_div_idx, vae_filt_div_rank, mongo.db, spotify, region, spotify_ids=vae_filt_div_spot, verbose=True)
 
-        db.users.update_one(
+        mongo.db.users.update_one(
             {'id': id},
             {'$set': {
                 'recs': rec_lists,
@@ -133,7 +130,7 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
 @app.route('/request_recs', methods=['POST'])
 def request_recs():
     # Include authorization here
-    if db.users.find_one({'id': request.form['participant_id']}, {'_id': 1}) is None:
+    if mongo.db.users.find_one({'id': request.form['participant_id']}, {'_id': 1}) is None:
         return render_template('verification.html')
 
     session['id'] = request.form['participant_id']
@@ -151,7 +148,7 @@ def request_recs():
     except ValueError:
         pass
 
-    user_data = db.users.find_one({'id': session['id']}, {'intro_survey': 1})
+    user_data = mongo.db.users.find_one({'id': session['id']}, {'intro_survey': 1})
     if 'intro_survey' in user_data:
         return render_template('loading.html')
 
@@ -161,7 +158,7 @@ def request_recs():
 @app.route('/recieve_form', methods=['POST'])
 def recieve_form():
     if request.form['formID'] == 'intro_survey':
-        db.users.update_one(
+        mongo.db.users.update_one(
             {'id': session['id']},
             {'$set': {request.form['formID']: request.form}},
             upsert=True
@@ -186,7 +183,7 @@ def check_recs():
 @app.route('/rec_lists/', methods=['GET', 'POST'])
 def show_rec_lists():
     if 'sequence' not in session:
-        cursor = db.latin.find()
+        cursor = mongo.db.latin.find()
         min_count = float(9999999)
         for doc in cursor:
             if doc['count'] <= min_count:
@@ -194,7 +191,7 @@ def show_rec_lists():
                 session['group'] = doc['group']
                 session['sequence'] = doc['sequence']
 
-        db.users.update_one(
+        mongo.db.users.update_one(
             {'id': session['id']},
             {'$set': {
                 'group': session['group'],
@@ -203,7 +200,7 @@ def show_rec_lists():
             upsert=True
         )
 
-        db.latin.update_one(
+        mongo.db.latin.update_one(
             {'group': session['group']},
             {'$inc': {
                 'count': 1
@@ -215,7 +212,7 @@ def show_rec_lists():
 
     elif request.method == 'POST':
         if int(request.form['list_count']) == session['list_count']:
-            db.users.update_one(
+            mongo.db.users.update_one(
                 {'id': session['id']},
                 {'$set': {request.form['list_key']: request.form}},
                 upsert=True
