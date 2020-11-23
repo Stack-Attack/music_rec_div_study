@@ -92,7 +92,7 @@ def get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=10, 
 
 
 def get_user_tracks(username, db, network, refresh=False, time_from=1590969600, limit=None, verbose=False):
-    user_data = db.users.find_one({'username': username})
+    user_data = db.LEs.find_one({'username': username})
 
     if user_data and not refresh:
         LEs = user_data['LEs']
@@ -112,7 +112,7 @@ def get_user_tracks(username, db, network, refresh=False, time_from=1590969600, 
 
             LEs[date] = track
 
-        db.users.update_one(
+        db.LEs.update_one(
             {'username': username},
             {'$set': {'LEs': LEs}},
             upsert=True
@@ -195,24 +195,38 @@ def get_vae_recs(user_data, vae_model, n=500):
     return rec_idx[0].detach().numpy(), np.array(range(rec_idx.shape[1]))
 
 
-def get_filtered_recs(rec_idx, rec_rank, genre_dict, db, threshold=5, verbose=True):
+def get_filtered_recs(rec_idx, rec_rank, genre_dict, db, latent_features, spotify, region, verbose=True):
+    # Retrieve the most diverse track in the entire recommendation list
+    max_div_encodings, _, _ = get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=1)
+    max_div_track = db.tracks.find_one({'encoding': int(max_div_encodings[0])}, {'spotify.genres': 1})
+
+    # Set the genre threshold (number of times a genre must occur in the users listening history) to be one greater than
+    # the most diverse tracks known genres. This ensures a different filtered list than non-filtered list
+    genre_threshold = 0
+    for genre in max_div_track['spotify']['genres']:
+        if genre in genre_dict and genre_dict[genre] >= genre_threshold:
+            genre_threshold = genre_dict[genre] + 1
+
+    # Generate new recommendation list which only contains tracks tagged with common genres in the users listening history
     filter_rec_idx, filter_rec_rank = [], []
     for encoding, rank in zip(rec_idx, rec_rank):
         track_data = db.tracks.find_one({'encoding': int(encoding)}, {'spotify.genres': 1})
         track_genres = track_data['spotify']['genres']
 
         for genre in track_genres:
-            if genre in genre_dict and genre_dict[genre] >= threshold:
+            if genre in genre_dict and genre_dict[genre] >= genre_threshold:
                 filter_rec_idx.append(encoding)
                 filter_rec_rank.append(rank)
                 break
 
+    # How many tracks were removed through filtering
     filter_count = len(rec_idx) - len(filter_rec_idx)
 
     if verbose:
         print(filter_count, ' tracks removed by filter.')
+        print('Genre threshold set at ', genre_threshold)
 
-    return filter_rec_idx, filter_rec_rank, filter_count
+    return filter_rec_idx, filter_rec_rank, {'genre_threshold': genre_threshold, 'filter_count': filter_count}
 
 
 def get_fresh_spotify_id(artist, song, spotify, region):

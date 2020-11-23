@@ -100,7 +100,7 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
         als_max_div_idx, als_max_div_rank, als_max_div_spot = get_div_recs(als_rec_idx, als_rec_rank, als_model.item_factors, spotify, db, region, n=10)
         rec_lists['als_max_div'] = process_rec_list(als_max_div_idx, als_max_div_rank, db, spotify, region, spotify_ids=als_max_div_spot, verbose=True)
 
-        als_filt_idx, als_filt_rank, als_filter_count = get_filtered_recs(als_rec_idx, als_rec_rank, genre_dict, db)
+        als_filt_idx, als_filt_rank, als_filter = get_filtered_recs(als_rec_idx, als_rec_rank, genre_dict, db, als_model.item_factors, spotify, region)
         als_filt_div_idx, als_filt_div_rank, als_filt_div_spot = get_div_recs(als_filt_idx, als_filt_rank, als_model.item_factors, spotify, db, region, n=10)
         rec_lists['als_filt_div'] = process_rec_list(als_filt_div_idx, als_filt_div_rank, db, spotify, region, spotify_ids=als_filt_div_spot, verbose=True)
 
@@ -110,13 +110,17 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
         vae_max_div_idx, vae_max_div_rank, vae_max_div_spot = get_div_recs(vae_rec_idx, vae_rec_rank, als_model.item_factors, spotify, db, region, n=10)
         rec_lists['vae_max_div'] = process_rec_list(vae_max_div_idx, vae_max_div_rank, db, spotify, region, spotify_ids=vae_max_div_spot, verbose=True)
 
-        vae_filt_idx, vae_filt_rank, vae_filter_count = get_filtered_recs(vae_rec_idx, vae_rec_rank, genre_dict, db)
+        vae_filt_idx, vae_filt_rank, vae_filter = get_filtered_recs(vae_rec_idx, vae_rec_rank, genre_dict, db, als_model.item_factors, spotify, region)
         vae_filt_div_idx, vae_filt_div_rank, vae_filt_div_spot = get_div_recs(vae_filt_idx, vae_filt_rank, als_model.item_factors, spotify, db, region, n=10)
         rec_lists['vae_filt_div'] = process_rec_list(vae_filt_div_idx, vae_filt_div_rank, db, spotify, region, spotify_ids=vae_filt_div_spot, verbose=True)
 
         db.users.update_one(
             {'id': id},
-            {'$set': {'recs': rec_lists, 'als_filter_count': als_filter_count, 'vae_filter_count': vae_filter_count}},
+            {'$set': {
+                'recs': rec_lists,
+                'als_filter': als_filter,
+                'vae_filter': vae_filter
+            }},
             upsert=True
         )
 
@@ -213,7 +217,7 @@ def show_rec_lists():
         if int(request.form['list_count']) == session['list_count']:
             db.users.update_one(
                 {'id': session['id']},
-                {'$set': {request.form['list_key']+'_survey': request.form}},
+                {'$set': {request.form['list_key']: request.form}},
                 upsert=True
             )
             session['list_count'] += 1
