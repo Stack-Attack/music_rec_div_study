@@ -1,2 +1,13 @@
 /venv/
 /.env
+/vae_model_final.pt
+/als_final.pkl
+/song_encodings_v2_ge10.pkl
+/als_final_toy.pkl
+/Dockerfile
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+/main (2).zip
+/song_encodings_v2_ge1000.pkl

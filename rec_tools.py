@@ -51,7 +51,7 @@ def get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=10, 
     div_rec_rank = []
 
     while not div_rec_idx:
-    # Find the index of the maximally diverse track and add it's encoding to the recommendation list remove it from
+        # Find the index of the maximally diverse track and add it's encoding to the recommendation list remove it from
         max_div_idx = np.argmax(div_vec)
         div_rec_idx.append(rec_idx[max_div_idx])
         div_rec_rank.append(rec_rank[max_div_idx])
@@ -59,8 +59,12 @@ def get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=10, 
         rec_idx_remainder = np.delete(rec_idx, max_div_idx)
         rec_rank_remainder = np.delete(rec_rank, max_div_idx)
 
-        decoding = db.tracks.find_one({'encoding': int(div_rec_idx[-1])})['track']
-        spotify_id = get_fresh_spotify_id(decoding[0], decoding[1], spotify, region)
+        track_data = db.tracks.find_one({'encoding': int(div_rec_idx[-1])})
+
+        if track_data['spotify']['id']:
+            spotify_id = get_fresh_spotify_id(track_data['spotify']['id'], spotify, region)
+        else:
+            spotify_id = False
 
         if spotify_id:
             div_rec_spotify_ids = [spotify_id]
@@ -79,8 +83,12 @@ def get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=10, 
         rec_idx_remainder = np.delete(rec_idx_remainder, max_div_idx)
         rec_rank_remainder = np.delete(rec_rank_remainder, max_div_idx)
 
-        decoding = db.tracks.find_one({'encoding': int(div_rec_idx[-1])})['track']
-        spotify_id = get_fresh_spotify_id(decoding[0], decoding[1], spotify, region)
+        track_data = db.tracks.find_one({'encoding': int(div_rec_idx[-1])})
+
+        if track_data['spotify']['id']:
+            spotify_id = get_fresh_spotify_id(track_data['spotify']['id'], spotify, region)
+        else:
+            spotify_id = False
 
         if spotify_id:
             div_rec_spotify_ids.append(spotify_id)
@@ -132,7 +140,7 @@ def encode_user_tracks(LEs, encodings, verbose=False):
     unknown_LE_count = 0
     known = set()
 
-    for track in tqdm(LEs.values(), disable=not verbose):
+    for track in tqdm(LEs.values(), total=len(LEs), disable=not verbose):
         if tuple(track) in encodings:
             user_vector[int(encodings[tuple(track)])] += 1
 
@@ -197,19 +205,21 @@ def get_vae_recs(user_data, vae_model, n=500):
 
 def get_filtered_recs(rec_idx, rec_rank, genre_dict, db, latent_features, spotify, region, verbose=True):
     # Retrieve the most diverse track in the entire recommendation list
-    max_div_encodings, _, _ = get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=1)
+    max_div_encodings, _, _ = get_div_recs(rec_idx, rec_rank, latent_features, spotify, db, region, n=0)
     max_div_track = db.tracks.find_one({'encoding': int(max_div_encodings[0])}, {'spotify.genres': 1})
 
     # Set the genre threshold (number of times a genre must occur in the users listening history) to be one greater than
     # the most diverse tracks known genres. This ensures a different filtered list than non-filtered list
     genre_threshold = 0
+    threshold_genre = ''
     for genre in max_div_track['spotify']['genres']:
         if genre in genre_dict and genre_dict[genre] >= genre_threshold:
             genre_threshold = genre_dict[genre] + 1
+            threshold_genre = genre
 
     # Generate new recommendation list which only contains tracks tagged with common genres in the users listening history
     filter_rec_idx, filter_rec_rank = [], []
-    for encoding, rank in zip(rec_idx, rec_rank):
+    for encoding, rank in tqdm(zip(rec_idx, rec_rank), total=len(rec_idx), disable=not verbose):
         track_data = db.tracks.find_one({'encoding': int(encoding)}, {'spotify.genres': 1})
         track_genres = track_data['spotify']['genres']
 
@@ -224,17 +234,16 @@ def get_filtered_recs(rec_idx, rec_rank, genre_dict, db, latent_features, spotif
 
     if verbose:
         print(filter_count, ' tracks removed by filter.')
-        print('Genre threshold set at ', genre_threshold)
+        print('Genre threshold set at ', genre_threshold, ' for ', threshold_genre)
 
     return filter_rec_idx, filter_rec_rank, {'genre_threshold': genre_threshold, 'filter_count': filter_count}
 
 
-def get_fresh_spotify_id(artist, song, spotify, region):
-    q = 'artist:' + artist + ' track:' + song.replace("'", "")
-    result = spotify.search(q.encode(encoding='UTF-8'), limit=1, type='track', market=region)
+def get_fresh_spotify_id(old_id, spotify, region):
+    result = spotify.tracks([old_id], market=region)
 
-    if len(result['tracks']['items']) > 0 and result['tracks']['items'][0]['is_playable']:
-        return result['tracks']['items'][0]['id']
+    if len(result['tracks']) > 0 and result['tracks'][0]['is_playable']:
+        return result['tracks'][0]['id']
     else:
         return False
 
@@ -250,14 +259,15 @@ def process_rec_list(rec_idx, rec_rank, db, spotify, region, spotify_ids=False, 
             'artist': result['track'][0],
             'track': result['track'][1],
             'rel': float(rec_rank[i]),
-            'pop': result['popularity'],
-            'spotify': get_fresh_spotify_id(result['track'][0], result['track'][1], spotify, region)
+            'pop': result['popularity']
         }
 
         if spotify_ids:
             song['spotify'] = spotify_ids[i]
+        elif result['spotify']['id']:
+            song['spotify'] = get_fresh_spotify_id(result['spotify']['id'], spotify, region)
         else:
-            song['spotify'] = get_fresh_spotify_id(result['track'][0], result['track'][1], spotify, region)
+            song['spotify'] = False
 
         if song['spotify']:
             rec_list.append(song)

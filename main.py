@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, session, jsonify
 from flask_executor import Executor
 import pickle
 from MultVAE import MultVAE, CSRDataset
-from rec_tools import get_user_tracks, encode_user_tracks, get_als_recs, get_vae_recs, get_vector_div, process_rec_list, get_div_recs, get_genre_hash, get_filtered_recs
+from rec_tools import get_user_tracks, encode_user_tracks, get_als_recs, get_vae_recs, process_rec_list, get_div_recs, get_genre_hash, get_filtered_recs
 from flask_pymongo import PyMongo
 import pylast
 import torch
@@ -37,11 +37,14 @@ spotify = spotipy.Spotify(
 if int(os.getenv("PRODUCTION")):
     gdown.download(os.getenv("ALS_MODEL_REMOTE"), 'als_model.pkl')
     gdown.download(os.getenv("SONG_ENCODINGS_REMOTE"), 'song_encodings.pkl')
-    # gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
-
-ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
-VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
-SONG_ENCODINGS_DIR = Path(os.getenv("SONG_ENCODINGS_DIR"))
+    gdown.download(os.getenv("VAE_MODEL_REMOTE"), 'vae_model.pt')
+    ALS_MODEL_DIR = Path('als_model.pkl')
+    VAE_MODEL_DIR = Path('vae_model.pkl')
+    SONG_ENCODINGS_DIR = Path('song_encodings.pkl')
+else:
+    ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
+    VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
+    SONG_ENCODINGS_DIR = Path(os.getenv("SONG_ENCODINGS_DIR"))
 
 VAE_MODEL_CONF = {
     "enc_dims": [200],
@@ -50,6 +53,7 @@ VAE_MODEL_CONF = {
     "total_anneal_steps": 10000,
     "learning_rate": 1e-3
 }
+
 
 def load_als_model(path):
     with open(path, 'rb') as file:
@@ -72,7 +76,7 @@ def load_song_encodings(path):
 
 als_model = load_als_model(ALS_MODEL_DIR)
 song_encodings = load_song_encodings(SONG_ENCODINGS_DIR)
-#vae_model = load_vae_model(VAE_MODEL_DIR, VAE_MODEL_CONF)
+vae_model = load_vae_model(VAE_MODEL_DIR, VAE_MODEL_CONF)
 
 print('Done loading models into ram.')
 
@@ -86,7 +90,7 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
     user_data = mongo.db.users.find_one({'id': id}, {'recs': 1})
 
     rec_lists = {}
-    if refresh_recs or 'recs' not in user_data:
+    if refresh_recs or refresh_LEs or 'recs' not in user_data:
         LEs = get_user_tracks(username, mongo.db, network, verbose=True, refresh=refresh_LEs)
         LEs, _, _ = encode_user_tracks(LEs, song_encodings, verbose=True)
         genre_dict = get_genre_hash(LEs, id, mongo.db, verbose=True)
@@ -101,7 +105,7 @@ def generate_recs(id, username, region, refresh_recs=False, refresh_LEs=False):
         als_filt_div_idx, als_filt_div_rank, als_filt_div_spot = get_div_recs(als_filt_idx, als_filt_rank, als_model.item_factors, spotify, mongo.db, region, n=10)
         rec_lists['als_filt_div'] = process_rec_list(als_filt_div_idx, als_filt_div_rank, mongo.db, spotify, region, spotify_ids=als_filt_div_spot, verbose=True)
 
-        vae_rec_idx, vae_rec_rank = get_als_recs(LEs, als_model, n=N)
+        vae_rec_idx, vae_rec_rank = get_vae_recs(LEs, vae_model, n=N)
         rec_lists['vae'] = process_rec_list(vae_rec_idx, vae_rec_rank, mongo.db, spotify, region, verbose=True)
 
         vae_max_div_idx, vae_max_div_rank, vae_max_div_spot = get_div_recs(vae_rec_idx, vae_rec_rank, als_model.item_factors, spotify, mongo.db, region, n=10)
@@ -136,17 +140,16 @@ def request_recs():
     session['id'] = request.form['participant_id']
     session['region'] = request.form['region']
 
-    try:
+    if executor.futures.done(session['id']) is None:
         executor.submit_stored(
             session['id'],
-            generate_recs, session['id'],
+            generate_recs,
+            session['id'],
             request.form['username'],
+            session['region'],
             refresh_recs=True,
             refresh_LEs=False,
-            region=session['region']
         )
-    except ValueError:
-        pass
 
     user_data = mongo.db.users.find_one({'id': session['id']}, {'intro_survey': 1})
     if 'intro_survey' in user_data:
@@ -231,4 +234,4 @@ def show_rec_lists():
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0', port=80)
