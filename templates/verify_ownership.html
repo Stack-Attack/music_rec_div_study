@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="../static/style.css">
+</head>
+<body>
+    <div class="full_page flex_center">
+        <form action="{{ url_for('recieve_form') }}" method="post" onsubmit="loading()" id="content">
+            <input type="hidden" name="formID" value="verify_ownership" />
+            <div class="row_container" style="flex-direction: column; align-items: center">
+                <label for="participant_id" class="text_input flex_center" style="height: auto; width:600px; margin-bottom: 1em" >
+                    To verify ownership of your account please enter the name of one artist you have listened to in the
+                    previous 6 months. This will be verified against the listening data from your Last.FM account. You have
+                    {{ v_attempts }} attempts remaining.
+                </label>
+                <input type="text" required name="artist_name" placeholder="Artist Name" class="text_input flex_center">
+            </div>
+            <div class="row_container">
+                <input type="submit" class="text_input flex_center">
+            </div>
+        </form>
+        <img src="../static/loading.svg" style="color: white; display:none" id="loading"/>
+    </div>
+
+<script type="text/javascript">// <![CDATA[
+        function loading(){
+            document.getElementById('loading').style.display = "flex";
+            document.getElementById('content').style.display = "none"
+        }
+
+        if (parseInt({{ v_attempts }}) <= 0){
+            alert("You have entered too many incorrect artist names and failed to verify ownership of the LastFM account," +
+                " making you ineligible for this study. Please email kyle.robinson@uwaterloo.ca if" +
+                " you believe this was an error.")
+            window.close()
+        }
+
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 let Y_MARGINS = 30 + 80
-let Y_START = 50
+let Y_START = 250
 let NUM_RANKS = 10
 
 let known_songs = 0
@@ -38,6 +38,15 @@ function get_preview_element(id, top, load=true){
     familiar.className = 'known_button';
     familiar.onclick = () => remove(id);
     */
+
+    let error_label = document.createElement('label');
+    error_label.innerHTML = "Not<br/>Working<br/>"
+    let error = document.createElement('input');
+    error.type = 'checkbox';
+    error.className = 'radio_check'
+    error.name = id.concat('_track_error')
+    error.value = 'yes'
+    error_label.appendChild(error)
 
     let familiar_label = document.createElement('label');
     familiar_label.innerHTML = "Track<br/>Known<br/>"
@@ -116,6 +125,7 @@ function get_preview_element(id, top, load=true){
     likert_form.appendChild(l5_label);
 
     //preview.appendChild(familiar);
+    preview.appendChild(error_label);
     preview.appendChild(spotify);
     preview.appendChild(likert_form);
 
@@ -152,7 +162,7 @@ function get_likert_question(question, top, likert){
         likert_form.style.display = 'flex'
 
         let l1_label = document.createElement('label');
-        l1_label.innerHTML = "Strongly<br/>Dislike<br/>"
+        l1_label.innerHTML = "Strongly<br/>Disagree<br/>"
         let l1 = document.createElement('input');
         l1.type = 'radio';
         l1.name = question
@@ -162,7 +172,7 @@ function get_likert_question(question, top, likert){
         l1_label.appendChild(l1);
 
         let l2_label = document.createElement('label');
-        l2_label.innerHTML = "Dislike<br/>";
+        l2_label.innerHTML = "Disagree<br/>";
         let l2 = document.createElement('input');
         l2.type = 'radio';
         l2.name = question
@@ -172,7 +182,7 @@ function get_likert_question(question, top, likert){
         l2_label.appendChild(l2);
 
         let l3_label = document.createElement('label');
-        l3_label.innerHTML = "Like<br/>";
+        l3_label.innerHTML = "Undecided<br/>";
         let l3 = document.createElement('input');
         l3.type = 'radio';
         l3.name = question
@@ -182,7 +192,7 @@ function get_likert_question(question, top, likert){
         l3_label.appendChild(l3);
 
         let l4_label = document.createElement('label');
-        l4_label.innerHTML = "Strongly Like<br/>";
+        l4_label.innerHTML = "Agree<br/>";
         let l4 = document.createElement('input');
         l4.name = question
         l4.type = 'radio';
@@ -192,7 +202,7 @@ function get_likert_question(question, top, likert){
         l4_label.appendChild(l4);
 
         let l5_label = document.createElement('label');
-        l5_label.innerHTML = "Strongly Like<br/>";
+        l5_label.innerHTML = "Strongly Agree<br/>";
         let l5 = document.createElement('input');
         l5.name = question
         l5.type = 'radio';

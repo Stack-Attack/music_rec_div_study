@@ -2,6 +2,7 @@ body {
     display: flex;
     flex-direction: column;
     font: normal 1em Verdana, Arial, sans-serif;
+    min-width: 1025px;
 }
 
 label {
@@ -68,6 +69,12 @@ label {
     transition-duration: 2000ms;
 }
 
+.description {
+    top: 40px;
+    height: auto !important;
+    padding: 1em
+}
+
 .preview {
     justify-content: center;
     align-items: center;
@@ -77,6 +84,7 @@ label {
     transition-duration: 2000ms;
     display: flex;
     background: whitesmoke;
+    min-width: 1025px
 }
 
 .preview_container {

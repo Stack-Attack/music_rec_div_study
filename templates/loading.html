@@ -5,9 +5,13 @@
     <link rel="stylesheet" type="text/css" href="../static/style.css">
 </head>
 <body>
-    <div class="full_page flex_center">
+    <div class="full_page flex_center" style="flex-direction: column">
         <img src="../static/loading.svg" style="color: white; display:flex" id="loading"/>
         <div id="loading_status"></div>
+        <div id="loading_description" style="width: 400px; text-align: center">
+            Collecting your listening history from Last.FM and generating your personalized recommendations. This can
+            take a while. If you do not see a loading animation above please refresh the page.
+        </div>
     </div>
 <script type="text/javascript">
 
@@ -24,8 +28,22 @@
         if (data.status === 'finished'){
             window.location.replace({{ url_for('show_rec_lists')|tojson }})
         }
+        else if (data.status === 'verify'){
+            window.location.replace({{ url_for('verify_ownership')|tojson }})
+        }
+        else if (data.status === 'Not enough listening events'){
+            alert("You\'re LastFM account is private, doesn't exist, or has less than 50 total listening events (scrobbles) recorded" +
+                " in the last 6 months making you ineligible for this study. Please email kyle.robinson@uwaterloo.ca if" +
+                " you believe this was an error.")
+            window.location.replace({{ url_for('landing')|tojson }})
+        }
         else{
-            document.getElementById('loading_status').innerText = data.status
+            if (data.status === 'RUNNING') {
+                document.getElementById("loading").style.visibility = "visible"
+            }
+            else {
+                document.getElementById("loading").style.visibility = "hidden"
+            }
             window.setTimeout(requestUpdate, 10000)
         }
     }

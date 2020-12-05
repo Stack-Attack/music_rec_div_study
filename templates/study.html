@@ -10,6 +10,18 @@
         <img src="../static/loading.svg" style="color: white; display:flex" id="loading_svg"/>
     </div>
     <div id="content" class="preview_container">
+        <div id="description" class="preview description">
+            <div style="width: 90%">
+                Below are 10 personalized music recommendations in the form of 30 second song previews.
+                Please listen to as much of each preview as you feel you need to in order to answer the questions
+                found to the right. Please check all boxes that apply for each track. You may close the popup on the
+                preview using the x in the top right corner of each music player.
+                <br><br>
+                In the case of a white box rather than a song preview, please refresh the page. If a song preview does not
+                work (i.e 'This track is not available in your region'), please mark the 'Not Working' box and answer the
+                questions to the right to the best of your ability.
+            </div>
+    </div>
         <div id="progress">List {{ list_count|tojson|safe }}/5</div>
         <br/>
         <form action="{{ url_for('show_rec_lists') }}" method="post" id='rec_form' class="preview_container">
