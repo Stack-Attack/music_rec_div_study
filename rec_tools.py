@@ -76,8 +76,8 @@ def get_div_recs(
         div_rec_idx.append(rec_idx_remainder[max_div_idx])
         div_rec_rank.append(rec_rank_remainder[max_div_idx])
 
-        rec_idx_remainder = np.delete(rec_idx, max_div_idx)
-        rec_rank_remainder = np.delete(rec_rank, max_div_idx)
+        rec_idx_remainder = np.delete(rec_idx_remainder, max_div_idx)
+        rec_rank_remainder = np.delete(rec_rank_remainder, max_div_idx)
 
         track_data = db.tracks.find_one({"encoding": int(div_rec_idx[-1])})
 
@@ -173,7 +173,8 @@ def get_user_tracks(
             date = LE.timestamp
 
             LEs[date] = track
-            artists[LE.track.artist.name.lower()] = 1
+            if LE.track.artist.name[0] != '$':
+                artists[LE.track.artist.name.lower()] = 1
 
         if len(LEs) >= min_count:
             db.LEs.update_one({"id": id},

@@ -10,7 +10,8 @@
         <div id="loading_status"></div>
         <div id="loading_description" style="width: 400px; text-align: center">
             Collecting your listening history from Last.FM and generating your personalized recommendations. This can
-            take a while. If you do not see a loading animation above please refresh the page.
+            take up to 15 minutes. If you do not see a loading animation above please refresh the page. If this takes
+            longer than 15 minutes please message the requester and/or return the HIT.
         </div>
     </div>
 <script type="text/javascript">
@@ -35,6 +36,10 @@
             alert("You\'re LastFM account is private, doesn't exist, or has less than 50 total listening events (scrobbles) recorded" +
                 " in the last 6 months making you ineligible for this study. Please email kyle.robinson@uwaterloo.ca if" +
                 " you believe this was an error.")
+            window.location.replace({{ url_for('landing')|tojson }})
+        }
+        else if (data.status === 'retry'){
+            alert("Please try again, or message the requesters if you continue to see this message.")
             window.location.replace({{ url_for('landing')|tojson }})
         }
         else{

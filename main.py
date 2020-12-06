@@ -341,7 +341,13 @@ def recieve_form():
 @app.route("/check_recs")
 def check_recs():
     if not executor.futures.done(session["id"]):
-        return jsonify({"status": executor.futures._state(session["id"])})
+        if executor.futures.done(session["id"]) is None:
+            if 'rec_lists' in session:
+                return jsonify({'status': 'verify'})
+            else:
+                return jsonify({'status': 'retry'})
+        else:
+            return jsonify({"status": executor.futures._state(session["id"])})
 
     result = executor.futures.pop(session["id"]).result()
     if result == 'Not enough listening events':
@@ -349,12 +355,7 @@ def check_recs():
     else:
         session["rec_lists"] = result
 
-    verified_data = mongo.db.users.find_one({"id": session["id"]}, {"verified": 1})
-
-    if 'verified' in verified_data:
-        return jsonify({"status": "finished"})
-    else:
-        return jsonify({'status': 'verify'})
+    return jsonify({'status': 'verify'})
 
 
 @app.route("/verify_ownership/")
