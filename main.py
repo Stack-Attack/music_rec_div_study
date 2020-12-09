@@ -1,7 +1,4 @@
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
-from flask_executor import Executor
-import pickle
-from MultVAE import MultVAE, CSRDataset
 from rec_tools import (
     get_user_tracks,
     encode_user_tracks,
@@ -13,15 +10,21 @@ from rec_tools import (
     get_filtered_recs,
 )
 from flask_pymongo import PyMongo
-import pylast
-import torch
 from dotenv import load_dotenv
-from pathlib import Path
 import os
-import gdown
+from datetime import datetime
+from celery_tasks import RecommendationTask
+from celery import Celery
+from celery import Task, Celery
+from pymongo import MongoClient
+import os
+from pathlib import Path
+import pickle
+from MultVAE import MultVAE, CSRDataset
+import torch
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-from datetime import datetime
+import pylast
 
 load_dotenv()
 
@@ -29,68 +32,58 @@ N = 1000
 KEY_LIST = ["als", "als_filt_div", "als_max_div", "vae", "vae_filt_div", "vae_max_div"]
 
 app = Flask(__name__)
-executor = Executor(app)
+
 app.config["EXECUTOR_MAX_WORKERS"] = None
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET")
-app.config["MONGO_URI"] = os.getenv("MONGO_CLIENT")
+app.config["MONGO_URI"] = os.getenv("LOCAL_MONGO_CLIENT")
+app.config["CELERY_BROKER"] = os.getenv("CELERY_BROKER")
+app.config["CELERY_BACKEND"] = os.getenv("CELERY_BACKEND")
+
 mongo = PyMongo(app)
-
-network = pylast.LastFMNetwork(
-    api_key=os.getenv("LFM_KEY"), api_secret=os.getenv("LFM_SECRET")
-)
-
-spotify = spotipy.Spotify(
-    auth_manager=SpotifyClientCredentials(
-        client_id=os.getenv("SPOTIFY_KEY"), client_secret=os.getenv("SPOTIFY_SECRET")
-    ),
-    requests_timeout=20,
-)
-
-if int(os.getenv("PRODUCTION")):
-    gdown.download(os.getenv("ALS_MODEL_REMOTE"), "als_model.pkl")
-    gdown.download(os.getenv("SONG_ENCODINGS_REMOTE"), "song_encodings.pkl")
-    gdown.download(os.getenv("VAE_MODEL_REMOTE"), "vae_model.pt")
-    ALS_MODEL_DIR = Path("als_model.pkl")
-    VAE_MODEL_DIR = Path("vae_model.pkl")
-    SONG_ENCODINGS_DIR = Path("song_encodings.pkl")
-else:
-    ALS_MODEL_DIR = Path(os.getenv("ALS_MODEL_DIR"))
-    VAE_MODEL_DIR = Path(os.getenv("VAE_MODEL_DIR"))
-    SONG_ENCODINGS_DIR = Path(os.getenv("SONG_ENCODINGS_DIR"))
-
-VAE_MODEL_CONF = {
-    "enc_dims": [200],
-    "dropout": 0.5,
-    "anneal_cap": 1,
-    "total_anneal_steps": 10000,
-    "learning_rate": 1e-3,
-}
+celery = Celery('tasks', backend=app.config["CELERY_BACKEND"], broker=app.config["CELERY_BROKER"])
 
 
-def load_als_model(path):
-    with open(path, "rb") as file:
-        return pickle.load(file)
+class RecommendationTask(celery.Task):
+    def __init__(self):
+        def load_als_model(path):
+            with open(path, "rb") as file:
+                return pickle.load(file)
 
+        def load_vae_model(path, conf):
+            checkpoint = torch.load(path)
+            vae_model = MultVAE(conf, CSRDataset(2817819), torch.device("cpu"))
+            vae_model.load_state_dict(checkpoint["model_state_dict"])
+            vae_model.eval()
 
-def load_vae_model(path, conf):
-    checkpoint = torch.load(path)
-    vae_model = MultVAE(conf, CSRDataset(2817819), torch.device("cpu"))
-    vae_model.load_state_dict(checkpoint["model_state_dict"])
-    vae_model.eval()
+            return vae_model
 
-    return vae_model
+        def load_song_encodings(path):
+            with open(path, "rb") as file:
+                return pickle.load(file)
 
+        vae_model_conf = {
+            "enc_dims": [200],
+            "dropout": 0.5,
+            "anneal_cap": 1,
+            "total_anneal_steps": 10000,
+            "learning_rate": 1e-3,
+        }
 
-def load_song_encodings(path):
-    with open(path, "rb") as file:
-        return pickle.load(file)
+        self.als_model = load_als_model(Path(os.getenv("ALS_MODEL_DIR")))
+        self.song_encodings = load_song_encodings(Path(os.getenv("SONG_ENCODINGS_DIR")))
+        self.vae_model = load_vae_model(Path(os.getenv("VAE_MODEL_DIR")), vae_model_conf)
+        self.mongo = MongoClient(os.getenv("LOCAL_MONGO_CLIENT"))
+        self.spotify = spotipy.Spotify(
+            auth_manager=SpotifyClientCredentials(
+                client_id=os.getenv("SPOTIFY_KEY"), client_secret=os.getenv("SPOTIFY_SECRET")
+            ),
+            requests_timeout=20,
+        )
+        self.network = pylast.LastFMNetwork(
+            api_key=os.getenv("LFM_KEY"), api_secret=os.getenv("LFM_SECRET")
+        )
 
-
-als_model = load_als_model(ALS_MODEL_DIR)
-song_encodings = load_song_encodings(SONG_ENCODINGS_DIR)
-vae_model = load_vae_model(VAE_MODEL_DIR, VAE_MODEL_CONF)
-
-print("Done loading models into ram.")
+        print("Done loading models into celery worker.")
 
 
 @app.route("/")
@@ -103,143 +96,139 @@ def consent():
     return render_template("consent_form.html")
 
 
-def generate_recs(id, username, region, verbose=False, refresh_recs=False, refresh_LEs=False):
-    user_data = mongo.db.users.find_one({"id": id}, {"recs": 1})
-
+@celery.task(name='tasks.generate_recs', base=RecommendationTask)
+def generate_recs(id, username, region, verbose=True, refresh_LEs=False):
     rec_lists = {}
-    if refresh_recs or refresh_LEs or "recs" not in user_data:
-        LEs = get_user_tracks(
-            id, username, mongo.db, network, verbose=verbose, refresh=refresh_LEs
-        )
 
-        if LEs is None:
-            return 'Not enough listening events'
+    LEs = get_user_tracks(
+        id, username, mongo.db, generate_recs.network, verbose=verbose, refresh=refresh_LEs
+    )
 
-        LEs, rec_lists['known_track_count'], rec_lists['unknown_track_count'], rec_lists['unknown_LE_count'] = encode_user_tracks(LEs, song_encodings, verbose=verbose)
-        genre_dict = get_genre_hash(LEs, id, mongo.db, verbose=verbose)
+    if LEs is None:
+        return 'Not enough listening events'
 
-        als_rec_idx, als_rec_rank = get_als_recs(LEs, als_model, n=N)
-        rec_lists["als"], rec_lists["als_removed"] = process_rec_list(
-            als_rec_idx, als_rec_rank, mongo.db, spotify, region, verbose=verbose
-        )
+    LEs, rec_lists['known_track_count'], rec_lists['unknown_track_count'], rec_lists['unknown_LE_count'] = encode_user_tracks(LEs, generate_recs.song_encodings, verbose=verbose)
+    genre_dict = get_genre_hash(LEs, id, mongo.db, verbose=verbose)
 
-        als_max_div_idx, als_max_div_rank, als_max_div_spot, rec_lists["als_max_div_removed"] = get_div_recs(
-            als_rec_idx,
-            als_rec_rank,
-            als_model.item_factors,
-            spotify,
-            mongo.db,
-            region,
-            n=10,
-        )
-        rec_lists["als_max_div"], _ = process_rec_list(
-            als_max_div_idx,
-            als_max_div_rank,
-            mongo.db,
-            spotify,
-            region,
-            spotify_ids=als_max_div_spot,
-            verbose=verbose,
-        )
+    als_rec_idx, als_rec_rank = get_als_recs(LEs, generate_recs.als_model, n=N)
+    rec_lists["als"], rec_lists["als_removed"] = process_rec_list(
+        als_rec_idx, als_rec_rank, mongo.db, generate_recs.spotify, region, verbose=verbose
+    )
 
-        als_filt_idx, als_filt_rank, als_filter = get_filtered_recs(
-            als_rec_idx,
-            als_rec_rank,
-            genre_dict,
-            mongo.db,
-            als_model.item_factors,
-            spotify,
-            region,
-            verbose
-        )
-        als_filt_div_idx, als_filt_div_rank, als_filt_div_spot, rec_lists["als_filt_div_removed"] = get_div_recs(
-            als_filt_idx,
-            als_filt_rank,
-            als_model.item_factors,
-            spotify,
-            mongo.db,
-            region,
-            n=10,
-        )
-        rec_lists["als_filt_div"], _ = process_rec_list(
-            als_filt_div_idx,
-            als_filt_div_rank,
-            mongo.db,
-            spotify,
-            region,
-            spotify_ids=als_filt_div_spot,
-            verbose=verbose,
-        )
+    als_max_div_idx, als_max_div_rank, als_max_div_spot, rec_lists["als_max_div_removed"] = get_div_recs(
+        als_rec_idx,
+        als_rec_rank,
+        generate_recs.als_model.item_factors,
+        generate_recs.spotify,
+        mongo.db,
+        region,
+        n=10,
+    )
+    rec_lists["als_max_div"], _ = process_rec_list(
+        als_max_div_idx,
+        als_max_div_rank,
+        mongo.db,
+        generate_recs.spotify,
+        region,
+        spotify_ids=als_max_div_spot,
+        verbose=verbose,
+    )
 
-        vae_rec_idx, vae_rec_rank = get_vae_recs(LEs, vae_model, n=N)
-        rec_lists["vae"], rec_lists["vae_removed"] = process_rec_list(
-            vae_rec_idx, vae_rec_rank, mongo.db, spotify, region, verbose=verbose
-        )
+    als_filt_idx, als_filt_rank, als_filter = get_filtered_recs(
+        als_rec_idx,
+        als_rec_rank,
+        genre_dict,
+        mongo.db,
+        generate_recs.als_model.item_factors,
+        generate_recs.spotify,
+        region,
+        verbose
+    )
+    als_filt_div_idx, als_filt_div_rank, als_filt_div_spot, rec_lists["als_filt_div_removed"] = get_div_recs(
+        als_filt_idx,
+        als_filt_rank,
+        generate_recs.als_model.item_factors,
+        generate_recs.spotify,
+        mongo.db,
+        region,
+        n=10,
+    )
+    rec_lists["als_filt_div"], _ = process_rec_list(
+        als_filt_div_idx,
+        als_filt_div_rank,
+        mongo.db,
+        generate_recs.spotify,
+        region,
+        spotify_ids=als_filt_div_spot,
+        verbose=verbose,
+    )
 
-        vae_max_div_idx, vae_max_div_rank, vae_max_div_spot, rec_lists["vae_max_div_removed"] = get_div_recs(
-            vae_rec_idx,
-            vae_rec_rank,
-            als_model.item_factors,
-            spotify,
-            mongo.db,
-            region,
-            n=10,
-        )
-        rec_lists["vae_max_div"], _ = process_rec_list(
-            vae_max_div_idx,
-            vae_max_div_rank,
-            mongo.db,
-            spotify,
-            region,
-            spotify_ids=vae_max_div_spot,
-            verbose=verbose,
-        )
+    vae_rec_idx, vae_rec_rank = get_vae_recs(LEs, generate_recs.vae_model, n=N)
+    rec_lists["vae"], rec_lists["vae_removed"] = process_rec_list(
+        vae_rec_idx, vae_rec_rank, mongo.db, generate_recs.spotify, region, verbose=verbose
+    )
 
-        vae_filt_idx, vae_filt_rank, vae_filter = get_filtered_recs(
-            vae_rec_idx,
-            vae_rec_rank,
-            genre_dict,
-            mongo.db,
-            als_model.item_factors,
-            spotify,
-            region,
-            verbose
-        )
-        vae_filt_div_idx, vae_filt_div_rank, vae_filt_div_spot, rec_lists["vae_filt_div_removed"] = get_div_recs(
-            vae_filt_idx,
-            vae_filt_rank,
-            als_model.item_factors,
-            spotify,
-            mongo.db,
-            region,
-            n=10,
-        )
-        rec_lists["vae_filt_div"], _ = process_rec_list(
-            vae_filt_div_idx,
-            vae_filt_div_rank,
-            mongo.db,
-            spotify,
-            region,
-            spotify_ids=vae_filt_div_spot,
-            verbose=verbose,
-        )
+    vae_max_div_idx, vae_max_div_rank, vae_max_div_spot, rec_lists["vae_max_div_removed"] = get_div_recs(
+        vae_rec_idx,
+        vae_rec_rank,
+        generate_recs.als_model.item_factors,
+        generate_recs.spotify,
+        generate_recs.mongo.db,
+        region,
+        n=10,
+    )
+    rec_lists["vae_max_div"], _ = process_rec_list(
+        vae_max_div_idx,
+        vae_max_div_rank,
+        generate_recs.mongo.db,
+        generate_recs.spotify,
+        region,
+        spotify_ids=vae_max_div_spot,
+        verbose=verbose,
+    )
 
-        mongo.db.users.update_one(
-            {"id": id},
-            {
-                "$set": {
-                    "recs": rec_lists,
-                    "als_filter": als_filter,
-                    "vae_filter": vae_filter,
-                }
-            },
-            upsert=True,
-        )
+    vae_filt_idx, vae_filt_rank, vae_filter = get_filtered_recs(
+        vae_rec_idx,
+        vae_rec_rank,
+        genre_dict,
+        generate_recs.mongo.db,
+        generate_recs.als_model.item_factors,
+        generate_recs.spotify,
+        region,
+        verbose
+    )
+    vae_filt_div_idx, vae_filt_div_rank, vae_filt_div_spot, rec_lists["vae_filt_div_removed"] = get_div_recs(
+        vae_filt_idx,
+        vae_filt_rank,
+        generate_recs.als_model.item_factors,
+        generate_recs.spotify,
+        generate_recs.mongo.db,
+        region,
+        n=10,
+    )
+    rec_lists["vae_filt_div"], _ = process_rec_list(
+        vae_filt_div_idx,
+        vae_filt_div_rank,
+        generate_recs.mongo.db,
+        generate_recs.spotify,
+        region,
+        spotify_ids=vae_filt_div_spot,
+        verbose=verbose,
+    )
 
-    else:
-        rec_lists = user_data["recs"]
+    generate_recs.mongo.db.users.update_one(
+        {"id": id},
+        {
+            "$set": {
+                "recs": rec_lists,
+                "als_filter": als_filter,
+                "vae_filter": vae_filter,
+            }
+        },
+        upsert=True,
+    )
 
-    return rec_lists
+    return True
 
 
 @app.route("/request_recs", methods=["POST"])
@@ -251,24 +240,29 @@ def request_recs():
     ):
         return render_template("login.html")
 
+    # If the session data is different then clear it
     if "id" in session and session["id"] != request.form["participant_id"]:
         session.clear()
     session["id"] = request.form["participant_id"]
     session["region"] = request.form["region"]
 
-    if executor.futures.done(session["id"]) is None:
-        executor.submit_stored(
-            session["id"],
-            generate_recs,
-            session["id"],
-            request.form["username"],
-            session["region"],
-            refresh_recs=False,
-            refresh_LEs=False,
-            verbose=False
+    # Check for existing recs and survey data and handle accordingly
+    user_data = mongo.db.users.find_one({"id": session["id"]}, {"recs": 1, "intro_survey": 1, "processing": 1})
+    if 'recs' not in user_data and 'processing' not in user_data:
+        generate_recs.apply_async(
+            (
+                session["id"],
+                request.form["username"],
+                session["region"]
+            ),
+            task_id=session['id']
+        )
+        mongo.db.users.update_one(
+            {"id": session["id"]},
+            {"$set": {"processing": True}},
+            upsert=True,
         )
 
-    user_data = mongo.db.users.find_one({"id": session["id"]}, {"intro_survey": 1})
     if "intro_survey" in user_data:
         return render_template("loading.html")
     else:
@@ -340,22 +334,27 @@ def recieve_form():
 
 @app.route("/check_recs")
 def check_recs():
-    if not executor.futures.done(session["id"]):
-        if executor.futures.done(session["id"]) is None:
-            if 'rec_lists' in session:
-                return jsonify({'status': 'verify'})
-            else:
-                return jsonify({'status': 'retry'})
+    user_data = mongo.db.users.find_one({"id": session["id"]}, {"processing": 1})
+    if 'processing' in user_data:
+        task = generate_recs.AsyncResult(session['id'])
+        if not task.ready():
+            return jsonify({"status": "RUNNING"})
         else:
-            return jsonify({"status": executor.futures._state(session["id"])})
+            mongo.db.users.update_one(
+                {"id": session["id"]},
+                {"$unset": {"processing": ""}},
+                upsert=True,
+            )
+            result = task.get()
+            if not result:
+                return jsonify({'status': result})
 
-    result = executor.futures.pop(session["id"]).result()
-    if result == 'Not enough listening events':
-        return jsonify({"status": result})
-    else:
-        session["rec_lists"] = result
+    user_data = mongo.db.users.find_one({"id": session["id"]}, {"recs": 1})
+    if 'recs' in user_data:
+        session['rec_lists'] = user_data['recs']
+        return jsonify({'status': 'verify'})
 
-    return jsonify({'status': 'verify'})
+    return jsonify({'status': 'retry'})
 
 
 @app.route("/verify_ownership/")
