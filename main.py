@@ -372,6 +372,10 @@ def verify_ownership():
 
 @app.route("/rec_lists/", methods=["GET", "POST"])
 def show_rec_lists():
+    if 'rec_lists' not in session:
+        rec_data = mongo.db.users.find_one({'id': session['id']}, {'recs': 1})
+        session['rec_lists'] = rec_data['recs']
+
     # Check if sequence is already in cookies, if not pull it from the database or initialize it
     if "sequence" not in session:
         sequence_data = mongo.db.users.find_one({"id": session["id"]}, {"sequence": 1})
